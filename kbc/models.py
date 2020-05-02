@@ -180,3 +180,175 @@ class ComplEx(KBCModel):
             lhs[0] * rel[0] - lhs[1] * rel[1],
             lhs[0] * rel[1] + lhs[1] * rel[0]
         ], 1)
+
+
+class MobiusESM(KBCModel):
+    def __init__(
+            self, sizes: Tuple[int, int, int], rank: int,
+            init_size: float = 1e-3
+    ):
+        super(MobiusESM, self).__init__()
+        self.sizes = sizes
+        self.rank = rank
+
+        self.embeddings = nn.ModuleList([
+            nn.Embedding(s, 8 * rank, sparse=True)
+            #nn.Embedding(1, 8 * rank, sparse=True)
+            for s in sizes[:2]
+        ])
+        self.embeddings[0].weight.data *= init_size
+        self.embeddings[1].weight.data *= init_size
+
+    def score(self, x):
+        #print("Hello")
+        #pi = 3.14159265358979323846
+        lhs = self.embeddings[0](x[:, 0])
+        rel = self.embeddings[1](x[:, 1])
+        rhs = self.embeddings[0](x[:, 2])
+
+        re_head, im_head = lhs[:, :self.rank], lhs[:, self.rank:2*self.rank]
+        re_relation_a, im_relation_a, re_relation_b, im_relation_b, re_relation_c, im_relation_c, re_relation_d, im_relation_d = rel[:, :self.rank], rel[:, self.rank:2*self.rank], rel[:, 2*self.rank:3*self.rank], rel[:, 3*self.rank:4*self.rank], rel[:, 4*self.rank:5*self.rank], rel[:, 5*self.rank:6*self.rank], rel[:, 6*self.rank:7*self.rank], rel[:, 7*self.rank:]
+        re_tail, im_tail = rhs[:, :self.rank], rhs[:, self.rank:2*self.rank]
+
+        #phase_relation = rel[0]/(torch.tensor([0.1], dtype = torch.float32).cuda()/pi)
+
+        #rel1 = torch.cos(phase_relation), torch.sin(phase_relation)
+
+        #hr = (lhs[0] * rel1[0]), (lhs[1] * rel1[1])
+        #print("Hello")
+        re_score_a = re_head * re_relation_a - im_head * im_relation_a
+        im_score_a = re_head * im_relation_a + im_head * re_relation_a
+
+        # ah + b
+        re_score_top = re_score_a + re_relation_b
+        im_score_top = im_score_a + im_relation_b
+
+
+        # ch
+        re_score_c = re_head * re_relation_c - im_head * im_relation_c
+        im_score_c = re_head * im_relation_c + im_head * re_relation_c
+
+        # ch + d
+        re_score_dn = re_score_c + re_relation_d
+        im_score_dn = im_score_c + im_relation_d
+
+        # (ah + b)(ch-d)
+        dn_re = torch.sqrt(re_score_dn * re_score_dn + im_score_dn * im_score_dn)
+
+        # up_im = re_score_top * im_score_dn - im_score_top * re_score_dn
+        up_re = torch.div(re_score_top * re_score_dn + im_score_top * im_score_dn, dn_re)
+        up_im = torch.div(re_score_top * im_score_dn - im_score_top * re_score_dn, dn_re)
+
+        #re_score = up_re - re_tail
+        #im_score = up_im - im_tail
+
+        return torch.sum(
+            (up_re) * re_tail +
+            (up_im) * im_tail,
+            1, keepdim=True
+        )
+
+    def forward(self, x):
+        #print("Hello")
+        #self.embeddings[0].weight.data = nn.functional.normalize(self.embeddings[0].weight.data, p=2, dim=1)
+        #pi = 3.14159265358979323846
+        lhs = self.embeddings[0](x[:, 0])
+        rel = self.embeddings[1](x[:, 1])
+        rhs = self.embeddings[0](x[:, 2])
+
+        #lhs = lhs[:, :self.rank], lhs[:, self.rank:]
+        #rel = rel[:, :self.rank], rel[:, self.rank:]
+        #rhs = rhs[:, :self.rank], rhs[:, self.rank:]
+
+        re_head, im_head = lhs[:, :self.rank], lhs[:, self.rank:2*self.rank]
+        re_relation_a, im_relation_a, re_relation_b, im_relation_b, re_relation_c, im_relation_c, re_relation_d, im_relation_d = rel[:, :self.rank], rel[:, self.rank:2*self.rank], rel[:, 2*self.rank:3*self.rank], rel[:, 3*self.rank:4*self.rank], rel[:, 4*self.rank:5*self.rank], rel[:, 5*self.rank:6*self.rank], rel[:, 6*self.rank:7*self.rank], rel[:, 7*self.rank:]
+        re_tail, im_tail = rhs[:, :self.rank], rhs[:, self.rank:2*self.rank]
+
+        #phase_relation = rel[0]/(torch.tensor([0.1], dtype = torch.float32).cuda()/pi)
+
+        re_score_a = re_head * re_relation_a - im_head * im_relation_a
+        im_score_a = re_head * im_relation_a + im_head * re_relation_a
+
+        # ah + b
+        re_score_top = re_score_a + re_relation_b
+        im_score_top = im_score_a + im_relation_b
+
+        # ch
+        re_score_c = re_head * re_relation_c - im_head * im_relation_c
+        im_score_c = re_head * im_relation_c + im_head * re_relation_c
+
+        # ch + d
+        re_score_dn = re_score_c + re_relation_d
+        im_score_dn = im_score_c + im_relation_d
+
+        # (ah + b)(ch-d)^-1
+        dn_re = torch.sqrt(re_score_dn * re_score_dn + im_score_dn * im_score_dn)
+        # up_im = re_score_top * im_score_dn - im_score_top * re_score_dn
+        up_re = torch.div(re_score_top * re_score_dn + im_score_top * im_score_dn, dn_re)
+        up_im = torch.div(re_score_top * im_score_dn - im_score_top * re_score_dn, dn_re)
+
+        #re_score = up_re - re_tail
+        #im_score = up_im - im_tail
+
+
+        to_score = self.embeddings[0].weight
+        to_score = to_score[:, :self.rank], to_score[:, self.rank:2*self.rank]
+
+        #hr = (lhs[0] * rel[0]), (lhs[1] * rel[1])
+
+        #print("Train: TransComp")
+        #print((((hr[0]) @ to_score[0].transpose(0, 1)).size())
+        return (
+            (up_re) @ to_score[0].transpose(0, 1) +
+            (up_im) @ to_score[1].transpose(0, 1)
+        ), (
+            torch.sqrt(re_head ** 2 + im_head ** 2),
+            torch.sqrt(re_relation_a ** 2 + im_relation_a ** 2 + re_relation_c ** 2 + im_relation_c ** 2 + re_relation_b ** 2 + im_relation_b ** 2 + re_relation_d ** 2 + im_relation_d ** 2),
+            torch.sqrt(re_tail ** 2 + im_tail ** 2)
+        )
+
+    def get_rhs(self, chunk_begin: int, chunk_size: int):
+        #embeddings = self.embeddings[0](:)[:, :2*self.rank]
+        #print(self.embeddings[0].weight.data.size())
+        return self.embeddings[0].weight.data[
+            chunk_begin:chunk_begin + chunk_size,:2*self.rank
+        ].transpose(0, 1)
+
+    def get_queries(self, queries: torch.Tensor):
+        pi = 3.14159265358979323846
+        lhs = self.embeddings[0](queries[:, 0])
+        rel = self.embeddings[1](queries[:, 1])
+        #lhs = lhs[:, :self.rank], lhs[:, self.rank:]
+
+        #phase_relation = rel[0]/(torch.tensor([0.1], dtype = torch.float32).cuda()/pi)
+        #rel1 = torch.cos(phase_relation), torch.sin(phase_relation)
+
+        re_head, im_head = lhs[:, :self.rank], lhs[:, self.rank:2*self.rank]
+        re_relation_a, im_relation_a, re_relation_b, im_relation_b, re_relation_c, im_relation_c, re_relation_d, im_relation_d = rel[:, :self.rank], rel[:, self.rank:2*self.rank], rel[:, 2*self.rank:3*self.rank], rel[:, 3*self.rank:4*self.rank], rel[:, 4*self.rank:5*self.rank], rel[:, 5*self.rank:6*self.rank], rel[:, 6*self.rank:7*self.rank], rel[:, 7*self.rank:]
+
+        re_score_a = re_head * re_relation_a - im_head * im_relation_a
+        im_score_a = re_head * im_relation_a + im_head * re_relation_a
+
+        # ah + b
+        re_score_top = re_score_a + re_relation_b
+        im_score_top = im_score_a + im_relation_b
+
+        # ch
+        re_score_c = re_head * re_relation_c - im_head * im_relation_c
+        im_score_c = re_head * im_relation_c + im_head * re_relation_c
+
+        # ch + d
+        re_score_dn = re_score_c + re_relation_d
+        im_score_dn = im_score_c + im_relation_d
+
+        # (ah + b)(ch-d)
+        dn_re = torch.sqrt(re_score_dn * re_score_dn + im_score_dn * im_score_dn)
+        # up_im = re_score_top * im_score_dn - im_score_top * re_score_dn
+        up_re = torch.div(re_score_top * re_score_dn + im_score_top * im_score_dn, dn_re)
+        up_im = torch.div(re_score_top * im_score_dn - im_score_top * re_score_dn, dn_re)
+
+
+        return torch.cat([
+            up_re,
+            up_im
+        ], 1)
