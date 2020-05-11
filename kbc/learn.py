@@ -12,7 +12,7 @@ import torch
 from torch import optim
 
 from kbc.datasets import Dataset
-from kbc.models import CP, ComplEx, MobiusESM
+from kbc.models import CP, ComplEx, MobiusESM, MobiusESMRot
 from kbc.regularizers import F2, N3
 from kbc.optimizers import KBCOptimizer
 
@@ -29,7 +29,7 @@ parser.add_argument(
     help="Dataset in {}".format(datasets)
 )
 
-models = ['CP', 'ComplEx', 'MobiusESM']
+models = ['CP', 'ComplEx', 'MobiusESM', 'MobiusESMRot']
 parser.add_argument(
     '--model', choices=models,
     help="Model in {}".format(models)
@@ -93,6 +93,7 @@ model = {
     'CP': lambda: CP(dataset.get_shape(), args.rank, args.init),
     'ComplEx': lambda: ComplEx(dataset.get_shape(), args.rank, args.init),
     'MobiusESM': lambda: MobiusESM(dataset.get_shape(), args.rank, args.init),
+    'MobiusESMRot': lambda: MobiusESMRot(dataset.get_shape(), args.rank, args.init),
 }[args.model]()
 
 regularizer = {
