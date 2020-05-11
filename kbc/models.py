@@ -546,14 +546,40 @@ class MobiusESMRot(KBCModel):
         pi = 3.14159265358979323846
         lhs = self.embeddings[0](queries[:, 0])
         rel = self.embeddings[1](queries[:, 1])
-        #lhs = lhs[:, :self.rank], lhs[:, self.rank:]
 
-        #phase_relation = rel[0]/(torch.tensor([0.1], dtype = torch.float32).cuda()/pi)
-        #rel1 = torch.cos(phase_relation), torch.sin(phase_relation)
+        re_head, im_head = lhs[:, :self.rank], lhs[:, self.rank:2 * self.rank]
+        re_relation_a, im_relation_a, re_relation_b, im_relation_b, re_relation_c, im_relation_c, re_relation_d, im_relation_d = rel[:,:self.rank], rel[:,self.rank:2 * self.rank], rel[:,2 * self.rank:3 * self.rank], rel[:,3 * self.rank:4 * self.rank], rel[:,4 * self.rank:5 * self.rank], rel[:,5 * self.rank:6 * self.rank], rel[:,6 * self.rank:7 * self.rank], rel[:,7 * self.rank:]
 
-        re_head, im_head = lhs[:, :self.rank], lhs[:, self.rank:2*self.rank]
-        re_relation_a, im_relation_a, re_relation_b, im_relation_b, re_relation_c, im_relation_c, re_relation_d, im_relation_d = rel[:, :self.rank], rel[:, self.rank:2*self.rank], rel[:, 2*self.rank:3*self.rank], rel[:, 3*self.rank:4*self.rank], rel[:, 4*self.rank:5*self.rank], rel[:, 5*self.rank:6*self.rank], rel[:, 6*self.rank:7*self.rank], rel[:, 7*self.rank:]
+        phase_re_relation_a = re_relation_a / (self.embedding_range.item() / pi)
+        phase_im_relation_a = im_relation_a / (self.embedding_range.item() / pi)
 
+        phase_re_relation_b = re_relation_b / (self.embedding_range.item() / pi)
+        phase_im_relation_b = im_relation_b / (self.embedding_range.item() / pi)
+
+        phase_re_relation_c = re_relation_c / (self.embedding_range.item() / pi)
+        phase_im_relation_c = im_relation_c / (self.embedding_range.item() / pi)
+
+        phase_re_relation_d = re_relation_d / (self.embedding_range.item() / pi)
+        phase_im_relation_d = im_relation_d / (self.embedding_range.item() / pi)
+
+        re_relation_a = torch.cos(phase_re_relation_a)
+        im_relation_a = torch.sin(phase_im_relation_a)
+
+        re_relation_b = torch.cos(phase_re_relation_b)
+        im_relation_b = torch.sin(phase_im_relation_b)
+
+        re_relation_c = torch.cos(phase_re_relation_c)
+        im_relation_c = torch.sin(phase_im_relation_c)
+
+        re_relation_d = torch.cos(phase_re_relation_d)
+        im_relation_d = torch.sin(phase_im_relation_d)
+
+        # phase_relation = rel[0]/(torch.tensor([0.1], dtype = torch.float32).cuda()/pi)
+
+        # rel1 = torch.cos(phase_relation), torch.sin(phase_relation)
+
+        # hr = (lhs[0] * rel1[0]), (lhs[1] * rel1[1])
+        # print("Hello")
         re_score_a = re_head * re_relation_a - im_head * im_relation_a
         im_score_a = re_head * im_relation_a + im_head * re_relation_a
 
@@ -571,6 +597,7 @@ class MobiusESMRot(KBCModel):
 
         # (ah + b)(ch-d)
         dn_re = torch.sqrt(re_score_dn * re_score_dn + im_score_dn * im_score_dn)
+
         # up_im = re_score_top * im_score_dn - im_score_top * re_score_dn
         up_re = torch.div(re_score_top * re_score_dn + im_score_top * im_score_dn, dn_re)
         up_im = torch.div(re_score_top * im_score_dn - im_score_top * re_score_dn, dn_re)
