@@ -16,6 +16,7 @@ from kbc.models import CP, ComplEx, MobiusESM, MobiusESMRot
 from kbc.regularizers import F2, N3
 from kbc.optimizers import KBCOptimizer
 
+torch.manual_seed(0)
 
 big_datasets = ['FB15K', 'WN', 'WN18RR', 'FB237', 'YAGO3-10', 'NELL-995-h25', 'NELL-995-h50', 'NELL-995-h75', 'NELL-995-h100']
 datasets = big_datasets
