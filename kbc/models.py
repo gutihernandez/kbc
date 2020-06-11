@@ -666,7 +666,13 @@ class QuatE(KBCModel):
         # score_i = A * x_c + B * s_c + C * z_c - D * y_c
         # score_j = A * y_c - B * z_c + C * s_c + D * x_c
         # score_k = A * z_c + B * y_c - C * x_c + D * s_c
-        return -torch.sum(score_r, -1)
+        return torch.sum(
+            (A) * rhs[0] +
+            (B) * rhs[1] +
+            (C) * rhs[2] +
+            (D) * rhs[3],
+            1, keepdim=True
+        )
 
     def forward(self, x):
         lhs = self.embeddings[0](x[:, 0])
