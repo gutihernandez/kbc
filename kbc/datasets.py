@@ -13,7 +13,6 @@ from typing import Dict, Tuple, List
 import numpy as np
 import torch
 from kbc.models import KBCModel
-np.random.seed(0)
 
 DATA_PATH = Path(pkg_resources.resource_filename('kbc', 'data/'))
 
