@@ -54,6 +54,11 @@ parser.add_argument(
     '--max_epochs', default=50, type=int,
     help="Number of epochs."
 )
+
+parser.add_argument(
+    '--save_model', default=False, action='store_true'
+)
+
 parser.add_argument(
     '--valid', default=3, type=float,
     help="Number of epochs before valid."
@@ -149,3 +154,19 @@ for e in range(args.max_epochs):
 
 results = dataset.eval(model, 'test', -1)
 print("\n\nTEST : ", results)
+
+if args.save_model:
+  import numpy as np
+
+  entity_embedding = model.embeddings[0].weight.detach().cpu().numpy()
+  np.save(
+      'entity_embedding_'+args.model+'_'+str(args.max_epochs),
+      entity_embedding
+  )
+
+  relation_embedding = model.embeddings[1].weight.detach().cpu().numpy()
+  np.save(
+      'relation_embedding_'+args.model+'_'+str(args.max_epochs),
+      relation_embedding
+  )
+
