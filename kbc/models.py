@@ -1,9 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-#
+#Attribution-NonCommercial 4.0 International
 
 from abc import ABC, abstractmethod
 from typing import Tuple, List, Dict
@@ -115,7 +110,74 @@ class CP(KBCModel):
     def get_queries(self, queries: torch.Tensor):
         return self.lhs(queries[:, 0]).data * self.rel(queries[:, 1]).data
 
+class ComplEx(KBCModel):
+    def __init__(
+            self, sizes: Tuple[int, int, int], rank: int,
+            init_size: float = 1e-3
+    ):
+        super(ComplEx, self).__init__()
+        self.sizes = sizes
+        self.rank = rank
 
+        self.embeddings = nn.ModuleList([
+            nn.Embedding(s, 2 * rank, sparse=True)
+            for s in sizes[:2]
+        ])
+        self.embeddings[0].weight.data *= init_size
+        self.embeddings[1].weight.data *= init_size
+
+    def score(self, x):
+        lhs = self.embeddings[0](x[:, 0])
+        rel = self.embeddings[1](x[:, 1])
+        rhs = self.embeddings[0](x[:, 2])
+
+        lhs = lhs[:, :self.rank], lhs[:, self.rank:]
+        rel = rel[:, :self.rank], rel[:, self.rank:]
+        rhs = rhs[:, :self.rank], rhs[:, self.rank:]
+
+        return torch.sum(
+            (lhs[0] * rel[0] - lhs[1] * rel[1]) * rhs[0] +
+            (lhs[0] * rel[1] + lhs[1] * rel[0]) * rhs[1],
+            1, keepdim=True
+        )
+
+    def forward(self, x):
+        lhs = self.embeddings[0](x[:, 0])
+        rel = self.embeddings[1](x[:, 1])
+        rhs = self.embeddings[0](x[:, 2])
+
+        lhs = lhs[:, :self.rank], lhs[:, self.rank:]
+        rel = rel[:, :self.rank], rel[:, self.rank:]
+        rhs = rhs[:, :self.rank], rhs[:, self.rank:]
+
+        to_score = self.embeddings[0].weight
+        to_score = to_score[:, :self.rank], to_score[:, self.rank:]
+        return (
+            (lhs[0] * rel[0] - lhs[1] * rel[1]) @ to_score[0].transpose(0, 1) +
+            (lhs[0] * rel[1] + lhs[1] * rel[0]) @ to_score[1].transpose(0, 1)
+        ), (
+            torch.sqrt(lhs[0] ** 2 + lhs[1] ** 2),
+            torch.sqrt(rel[0] ** 2 + rel[1] ** 2),
+            torch.sqrt(rhs[0] ** 2 + rhs[1] ** 2)
+        )
+
+    def get_rhs(self, chunk_begin: int, chunk_size: int):
+        return self.embeddings[0].weight.data[
+            chunk_begin:chunk_begin + chunk_size
+        ].transpose(0, 1)
+
+    def get_queries(self, queries: torch.Tensor):
+        lhs = self.embeddings[0](queries[:, 0])
+        rel = self.embeddings[1](queries[:, 1])
+        lhs = lhs[:, :self.rank], lhs[:, self.rank:]
+        rel = rel[:, :self.rank], rel[:, self.rank:]
+
+        return torch.cat([
+            lhs[0] * rel[0] - lhs[1] * rel[1],
+            lhs[0] * rel[1] + lhs[1] * rel[0]
+        ], 1)
+
+#MAIN CONTRIBUTIONS OF 5*E
 class MobiusESM(KBCModel):
     def __init__(
             self, sizes: Tuple[int, int, int], rank: int,
@@ -287,7 +349,7 @@ class MobiusESM(KBCModel):
             up_im
         ], 1)
 
-
+#MAIN CONTRIBUTIONS OF 5*E
 class MobiusESMRot(KBCModel):
     def __init__(
             self, sizes: Tuple[int, int, int], rank: int,
@@ -541,75 +603,7 @@ class MobiusESMRot(KBCModel):
             up_im
         ], 1)
 
-
-class ComplEx(KBCModel):
-    def __init__(
-            self, sizes: Tuple[int, int, int], rank: int,
-            init_size: float = 1e-3
-    ):
-        super(ComplEx, self).__init__()
-        self.sizes = sizes
-        self.rank = rank
-
-        self.embeddings = nn.ModuleList([
-            nn.Embedding(s, 2 * rank, sparse=True)
-            for s in sizes[:2]
-        ])
-        self.embeddings[0].weight.data *= init_size
-        self.embeddings[1].weight.data *= init_size
-
-    def score(self, x):
-        lhs = self.embeddings[0](x[:, 0])
-        rel = self.embeddings[1](x[:, 1])
-        rhs = self.embeddings[0](x[:, 2])
-
-        lhs = lhs[:, :self.rank], lhs[:, self.rank:]
-        rel = rel[:, :self.rank], rel[:, self.rank:]
-        rhs = rhs[:, :self.rank], rhs[:, self.rank:]
-
-        return torch.sum(
-            (lhs[0] * rel[0] - lhs[1] * rel[1]) * rhs[0] +
-            (lhs[0] * rel[1] + lhs[1] * rel[0]) * rhs[1],
-            1, keepdim=True
-        )
-
-    def forward(self, x):
-        lhs = self.embeddings[0](x[:, 0])
-        rel = self.embeddings[1](x[:, 1])
-        rhs = self.embeddings[0](x[:, 2])
-
-        lhs = lhs[:, :self.rank], lhs[:, self.rank:]
-        rel = rel[:, :self.rank], rel[:, self.rank:]
-        rhs = rhs[:, :self.rank], rhs[:, self.rank:]
-
-        to_score = self.embeddings[0].weight
-        to_score = to_score[:, :self.rank], to_score[:, self.rank:]
-        return (
-            (lhs[0] * rel[0] - lhs[1] * rel[1]) @ to_score[0].transpose(0, 1) +
-            (lhs[0] * rel[1] + lhs[1] * rel[0]) @ to_score[1].transpose(0, 1)
-        ), (
-            torch.sqrt(lhs[0] ** 2 + lhs[1] ** 2),
-            torch.sqrt(rel[0] ** 2 + rel[1] ** 2),
-            torch.sqrt(rhs[0] ** 2 + rhs[1] ** 2)
-        )
-
-    def get_rhs(self, chunk_begin: int, chunk_size: int):
-        return self.embeddings[0].weight.data[
-            chunk_begin:chunk_begin + chunk_size
-        ].transpose(0, 1)
-
-    def get_queries(self, queries: torch.Tensor):
-        lhs = self.embeddings[0](queries[:, 0])
-        rel = self.embeddings[1](queries[:, 1])
-        lhs = lhs[:, :self.rank], lhs[:, self.rank:]
-        rel = rel[:, :self.rank], rel[:, self.rank:]
-
-        return torch.cat([
-            lhs[0] * rel[0] - lhs[1] * rel[1],
-            lhs[0] * rel[1] + lhs[1] * rel[0]
-        ], 1)
-
-
+#MAIN CONTRIBUTIONS OF 5*E
 class QuatE(KBCModel):
     def __init__(
             self, sizes: Tuple[int, int, int], rank: int,

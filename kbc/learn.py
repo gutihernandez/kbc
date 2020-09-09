@@ -20,7 +20,7 @@ from kbc.optimizers import KBCOptimizer
 
 torch.manual_seed(0)
 
-big_datasets = ['FB15K', 'WN', 'WN18RR', 'FB237', 'YAGO3-10', 'NELL-995-h25', 'NELL-995-h50', 'NELL-995-h75', 'NELL-995-h100']
+big_datasets = ['FB15K', 'WN', 'WN18RR', 'FB237', 'YAGO3-10', 'NELL-995-h25', 'NELL-995-h50', 'NELL-995-h75', 'NELL-995-h100', 'Mock-DS']
 datasets = big_datasets
 
 parser = argparse.ArgumentParser(
@@ -60,6 +60,10 @@ parser.add_argument(
 )
 
 parser.add_argument(
+    '--load_model', default=False, action='store_true'
+)
+
+parser.add_argument(
     '--valid', default=3, type=float,
     help="Number of epochs before valid."
 )
@@ -91,6 +95,7 @@ parser.add_argument(
     '--decay2', default=0.999, type=float,
     help="decay rate for second moment estimate in Adam"
 )
+
 args = parser.parse_args()
 
 dataset = Dataset(args.dataset)
@@ -104,6 +109,28 @@ model = {
     'MobiusESMRot': lambda: MobiusESMRot(dataset.get_shape(), args.rank, args.init),
     'QuatE': lambda: QuatE(dataset.get_shape(), args.rank, args.init),
 }[args.model]()
+
+if args.load_model:
+  if args.model == "MobiusESM":
+    print("Mobius")
+    print(type(model))
+    print("shape before:" + str(model.embeddings[0].weight.data.shape))
+    model.embeddings[0].weight.data = torch.from_numpy(np.load("/content/drive/My Drive/masters/thesis/trained-embeddings/old-mobius-embeddings/WN18-50epoch/entity_embedding.npy"))
+    print("shape after:" + str(model.embeddings[0].weight.data.shape))
+    model.embeddings[1].weight.data = torch.from_numpy(np.load("/content/drive/My Drive/masters/thesis/trained-embeddings/old-mobius-embeddings/WN18-50epoch/relation_embedding.npy"))
+    print("Trained embeddings are loaded...")
+  if args.model == "QuatE":
+    print("QuatE")
+    print(type(model))
+    model.embeddings[0].weight.data = torch.from_numpy(np.load("/content/drive/My Drive/masters/thesis/trained-embeddings/WN18-QuatE-Dim-250/entity_embedding_QuatE_250.npy"))
+    model.embeddings[1].weight.data = torch.from_numpy(np.load("/content/drive/My Drive/masters/thesis/trained-embeddings/WN18-QuatE-Dim-250/relation_embedding_QuatE_250.npy"))
+    print("Trained embeddings are loaded...")
+  if args.model == "ComplEx":
+    print("ComplEx")
+    print(type(model))
+    model.embeddings[0].weight.data = torch.from_numpy(np.load("/content/drive/My Drive/masters/thesis/trained-embeddings/WN18-ComplEx-Dim-500/entity_embedding_ComplEx_40.npy"))
+    model.embeddings[1].weight.data = torch.from_numpy(np.load("/content/drive/My Drive/masters/thesis/trained-embeddings/WN18-ComplEx-Dim-500/relation_embedding_ComplEx_40.npy"))
+    print("Trained embeddings are loaded...")
 
 regularizer = {
     'F2': F2(args.reg),
@@ -132,7 +159,6 @@ def avg_both(mrrs: Dict[str, float], hits: Dict[str, torch.FloatTensor]):
     m = (mrrs['lhs'] + mrrs['rhs']) / 2.
     h = (hits['lhs'] + hits['rhs']) / 2.
     return {'MRR': m, 'hits@[1,3,10]': h}
-
 
 cur_loss = 0
 curve = {'train': [], 'valid': [], 'test': []}
