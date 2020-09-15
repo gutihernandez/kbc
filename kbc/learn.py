@@ -15,7 +15,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 
-
 from kbc.datasets import Dataset
 from kbc.models import CP, ComplEx, MobiusESM, MobiusESMRot, QuatE
 from kbc.regularizers import F2, N3
@@ -181,6 +180,7 @@ except OSError:
     print ("Creation of the directory %s failed" % path)
 else:
     print ("Successfully created the directory %s " % path)
+embedding_plots = []
 for e in range(args.max_epochs):
     cur_loss = optimizer.epoch(examples)
 
@@ -202,19 +202,22 @@ for e in range(args.max_epochs):
     if (e + 1) % args.plot_epochs == 0:
       with torch.no_grad():
         ent_embeddings = model.embeddings[0].weight.cpu().numpy()
-        f, (ax1, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [1, 1]},
-                                  figsize=(7, 14))
+        f, (ax1) = plt.subplots(1, 1, gridspec_kw={'height_ratios': [1]},
+                                  figsize=(3, 3))
 
-        ax1.scatter(x=ent_embeddings[:10,0], y=ent_embeddings[:10,1],  s=100)
+        ax1.scatter(x=ent_embeddings[:10,0], y=ent_embeddings[:10,1],  s=30)
         for i, txt in enumerate(np.asarray(ent_id)[:10,0]):
-            ax1.annotate(txt, (ent_embeddings[i,0], ent_embeddings[i,1]) ,fontsize=25)
+            ax1.annotate(txt, (ent_embeddings[i,0], ent_embeddings[i,1]) ,fontsize=10)
 
 
-        ax1.scatter(x=ent_embeddings[10:,0], y=-ent_embeddings[10:,1],  s=100)
+        ax1.scatter(x=ent_embeddings[10:,0], y=-ent_embeddings[10:,1],  s=30)
         for i, txt in enumerate(np.asarray(ent_id)[10:, 0]):
-            ax1.annotate(txt, (ent_embeddings[i+10, 0], -ent_embeddings[i+10, 1]),fontsize=25)
+            ax1.annotate(txt, (ent_embeddings[i+10, 0], -ent_embeddings[i+10, 1]),fontsize=10)
         model_name = str(args.model)
-        plt.savefig(model_name+"/"+model_name + "-" +str(args.max_epochs))
+        title_name = model_name + "-" +str(e)
+        ax1.set_title(title_name, fontsize=10)
+        plt.savefig(model_name+"/"+model_name + "-" +str(e).zfill(6))
+        plt.close()
         
 
 
