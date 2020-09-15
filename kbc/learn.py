@@ -11,6 +11,9 @@ from typing import Dict
 import torch
 from torch import optim
 import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import os
 
 
 from kbc.datasets import Dataset
@@ -67,6 +70,12 @@ parser.add_argument(
     '--valid', default=3, type=float,
     help="Number of epochs before valid."
 )
+
+parser.add_argument(
+    '--plot_epochs', default=1000, type=float,
+    help="Number of epochs before plotting."
+)
+
 parser.add_argument(
     '--rank', default=1000, type=int,
     help="Factorization rank."
@@ -95,6 +104,8 @@ parser.add_argument(
     '--decay2', default=0.999, type=float,
     help="decay rate for second moment estimate in Adam"
 )
+
+
 
 args = parser.parse_args()
 
@@ -162,6 +173,14 @@ def avg_both(mrrs: Dict[str, float], hits: Dict[str, torch.FloatTensor]):
 
 cur_loss = 0
 curve = {'train': [], 'valid': [], 'test': []}
+ent_id = pd.read_csv("ent_id", sep='\t', header=None)
+path = str(args.model)
+try:
+    os.mkdir(path)
+except OSError:
+    print ("Creation of the directory %s failed" % path)
+else:
+    print ("Successfully created the directory %s " % path)
 for e in range(args.max_epochs):
     cur_loss = optimizer.epoch(examples)
 
@@ -177,6 +196,27 @@ for e in range(args.max_epochs):
 
         print("\t TRAIN: ", train)
         print("\t VALID : ", valid)
+
+
+    #plotting part...
+    if (e + 1) % args.plot_epochs == 0:
+      with torch.no_grad():
+        ent_embeddings = model.embeddings[0].weight.cpu().numpy()
+        f, (ax1, ax2) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [1, 1]},
+                                  figsize=(7, 14))
+
+        ax1.scatter(x=ent_embeddings[:10,0], y=ent_embeddings[:10,1],  s=100)
+        for i, txt in enumerate(np.asarray(ent_id)[:10,0]):
+            ax1.annotate(txt, (ent_embeddings[i,0], ent_embeddings[i,1]) ,fontsize=25)
+
+
+        ax1.scatter(x=ent_embeddings[10:,0], y=-ent_embeddings[10:,1],  s=100)
+        for i, txt in enumerate(np.asarray(ent_id)[10:, 0]):
+            ax1.annotate(txt, (ent_embeddings[i+10, 0], -ent_embeddings[i+10, 1]),fontsize=25)
+        model_name = str(args.model)
+        plt.savefig(model_name+"/"+model_name + "-" +str(args.max_epochs))
+        
+
 
 results = dataset.eval(model, 'test', -1)
 print("\n\nTEST : ", results)
@@ -195,4 +235,6 @@ if args.save_model:
       'relation_embedding_'+args.model+'_'+str(args.max_epochs),
       relation_embedding
   )
+
+
 
