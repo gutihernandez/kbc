@@ -16,7 +16,7 @@ import pandas as pd
 import os
 
 from kbc.datasets import Dataset
-from kbc.models import CP, ComplEx, MobiusESM, MobiusESMRot, QuatE
+from kbc.models import CP, ComplEx, MobiusESM, MobiusESMRot, QuatE, MobiusQuatE
 from kbc.regularizers import F2, N3
 from kbc.optimizers import KBCOptimizer
 
@@ -34,7 +34,7 @@ parser.add_argument(
     help="Dataset in {}".format(datasets)
 )
 
-models = ['CP', 'ComplEx', 'MobiusESM', 'MobiusESMRot', 'QuatE']
+models = ['CP', 'ComplEx', 'MobiusESM', 'MobiusESMRot', 'QuatE', 'MobiusQuatE']
 parser.add_argument(
     '--model', choices=models,
     help="Model in {}".format(models)
@@ -118,6 +118,7 @@ model = {
     'MobiusESM': lambda: MobiusESM(dataset.get_shape(), args.rank, args.init),
     'MobiusESMRot': lambda: MobiusESMRot(dataset.get_shape(), args.rank, args.init),
     'QuatE': lambda: QuatE(dataset.get_shape(), args.rank, args.init),
+    'MobiusQuatE': lambda: MobiusQuatE(dataset.get_shape(), args.rank, args.init),
 }[args.model]()
 
 if args.load_model:
