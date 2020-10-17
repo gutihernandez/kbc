@@ -931,7 +931,7 @@ class MobiusQuatE(KBCModel):
         #embeddings = self.embeddings[0](:)[:, :2*self.rank]
         #print(self.embeddings[0].weight.data.size())
         return self.embeddings[0].weight.data[
-            chunk_begin:chunk_begin + chunk_size,:2*self.rank
+            chunk_begin:chunk_begin + chunk_size,:4*self.rank
         ].transpose(0, 1)
 
     def get_queries(self, queries: torch.Tensor):
