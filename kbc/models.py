@@ -206,12 +206,6 @@ class MobiusESM(KBCModel):
         re_relation_a, im_relation_a, re_relation_b, im_relation_b, re_relation_c, im_relation_c, re_relation_d, im_relation_d = rel[:, :self.rank], rel[:, self.rank:2*self.rank], rel[:, 2*self.rank:3*self.rank], rel[:, 3*self.rank:4*self.rank], rel[:, 4*self.rank:5*self.rank], rel[:, 5*self.rank:6*self.rank], rel[:, 6*self.rank:7*self.rank], rel[:, 7*self.rank:]
         re_tail, im_tail = rhs[:, :self.rank], rhs[:, self.rank:2*self.rank]
 
-        #phase_relation = rel[0]/(torch.tensor([0.1], dtype = torch.float32).cuda()/pi)
-
-        #rel1 = torch.cos(phase_relation), torch.sin(phase_relation)
-
-        #hr = (lhs[0] * rel1[0]), (lhs[1] * rel1[1])
-        #print("Hello")
 
         # ah
         re_score_a = re_head * re_relation_a - im_head * im_relation_a
@@ -995,6 +989,265 @@ class MobiusQuatE(KBCModel):
                          + j_score_top * i_score_dn
                          + k_score_top * re_score_dn, dn_re)
 
+
+        return torch.cat([
+            up_re,
+            up_i,
+            up_j,
+            up_k
+        ], 1)
+
+#MAIN CONTRIBUTIONS OF 5*E
+class MobiusGeom2E(KBCModel):
+    def __init__(
+            self, sizes: Tuple[int, int, int], rank: int,
+            init_size: float = 1e-3
+    ):
+        super(MobiusGeom2E, self).__init__()
+        self.sizes = sizes
+        self.rank = rank
+
+        self.embeddings = nn.ModuleList([
+            nn.Embedding(s, 16 * rank, sparse=True)
+            #nn.Embedding(1, 8 * rank, sparse=True)
+            for s in sizes[:2]
+        ])
+        self.embeddings[0].weight.data *= init_size
+        self.embeddings[1].weight.data *= init_size
+
+    def score(self, x):
+
+        lhs = self.embeddings[0](x[:, 0])
+        rel = self.embeddings[1](x[:, 1])
+        rhs = self.embeddings[0](x[:, 2])
+
+        re_head, i_head, j_head, k_head = lhs[:, :self.rank], lhs[:, self.rank:2 * self.rank], lhs[:,2 * self.rank:3 * self.rank], lhs[:,3 * self.rank:4 * self.rank]
+        re_tail, i_tail, j_tail, k_tail = rhs[:, :self.rank], rhs[:, self.rank:2 * self.rank], rhs[:,2 * self.rank:3 * self.rank], rhs[:,3 * self.rank:4 * self.rank]
+
+        re_relation_a, i_relation_a, j_relation_a, k_relation_a = rel[:, :self.rank], rel[:,self.rank:2 * self.rank], rel[:,2 * self.rank:3 * self.rank], rel[:,3 * self.rank:4 * self.rank]
+        re_relation_b, i_relation_b, j_relation_b, k_relation_b = rel[:, 4 * self.rank:5 * self.rank], rel[:,5 * self.rank:6 * self.rank], rel[:,6 * self.rank:7 * self.rank], rel[:,7 * self.rank:8 * self.rank]
+        re_relation_c, i_relation_c, j_relation_c, k_relation_c = rel[:, 8 * self.rank:9 * self.rank], rel[:,9 * self.rank:10 * self.rank], rel[:,10 * self.rank:11 * self.rank], rel[:,11 * self.rank:12 * self.rank]
+        re_relation_d, i_relation_d, j_relation_d, k_relation_d = rel[:, 12 * self.rank:13 * self.rank], rel[:,13 * self.rank:14 * self.rank], rel[:,14 * self.rank:15 * self.rank], rel[:,15 * self.rank:16 * self.rank]
+
+
+        # ah
+        re_score_a = re_head * re_relation_a + i_head * i_relation_a + j_head * j_relation_a - k_head * k_relation_a
+        i_score_a = re_head * i_relation_a + i_head * re_relation_a - j_head * k_relation_a + k_head * j_relation_a
+        j_score_a = re_head * j_relation_a + i_head * k_relation_a + j_head * re_relation_a - k_head * i_relation_a
+        k_score_a = re_head * k_relation_a + i_head * j_relation_a - j_head * i_relation_a + k_head * re_relation_a
+
+
+        # ah + b
+        re_score_top = re_score_a + re_relation_b
+        i_score_top = i_score_a + i_relation_b
+        j_score_top = j_score_a + j_relation_b
+        k_score_top = k_score_a + k_relation_b
+
+
+        # ch
+        re_score_c = re_head * re_relation_c + i_head * i_relation_c + j_head * j_relation_c - k_head * k_relation_c
+        i_score_c = re_head * i_relation_c + i_head * re_relation_c - j_head * k_relation_c + k_head * j_relation_c
+        j_score_c = re_head * j_relation_c + i_head * k_relation_c + j_head * re_relation_c - k_head * i_relation_c
+        k_score_c = re_head * k_relation_c + i_head * j_relation_c - j_head * i_relation_c + k_head * re_relation_c
+
+        # ch + d
+        re_score_dn = re_score_c + re_relation_d
+        i_score_dn = i_score_c + i_relation_d
+        j_score_dn = j_score_c + j_relation_d
+        k_score_dn = k_score_c + k_relation_d
+
+        # (ah + b)(ch-d)
+        # TAKE THE NORM OF DOWNSIDE (which will be conjugated later)
+        dn_re = torch.sqrt(re_score_dn * re_score_dn + i_score_dn * i_score_dn + j_score_dn * j_score_dn + k_score_dn * k_score_dn)
+
+        # up_im = re_score_top * im_score_dn - im_score_top * re_score_dn
+        #here up_re and up_im means the resulting of the multiplication of conjugate(down) * up.
+        #For the sake of dividing by complex number, we take the conjugate of down and multiply it with both down and up
+        #at the end we end up with norm of down and on the upper part we end up with below operations
+        up_re = torch.div(re_score_top * re_score_dn
+                          - i_score_top * i_score_dn
+                          - j_score_top * j_score_dn
+                          + k_score_top * k_score_dn, dn_re)
+
+        up_i = torch.div(- re_score_top * i_score_dn
+                         + i_score_top * re_score_dn
+                         + j_score_top * k_score_dn
+                         - k_score_top * j_score_dn, dn_re)
+
+        up_j = torch.div(- re_score_top * j_score_dn
+                         - i_score_top * k_score_dn
+                         + j_score_top * re_score_dn
+                         + k_score_top * i_score_dn, dn_re)
+
+        up_k = torch.div(- re_score_top * k_score_dn
+                         - i_score_top * j_score_dn
+                         + j_score_top * i_score_dn
+                         + k_score_top * re_score_dn, dn_re)
+
+
+        return torch.sum(
+            (up_re) * re_tail +
+            (up_i) * i_tail +
+            (up_j) * j_tail +
+            (up_k) * k_tail,
+            1, keepdim=True
+        )
+
+    def forward(self, x):
+        lhs = self.embeddings[0](x[:, 0])
+        rel = self.embeddings[1](x[:, 1])
+        rhs = self.embeddings[0](x[:, 2])
+
+        re_head, i_head, j_head, k_head = lhs[:, :self.rank], lhs[:, self.rank:2 * self.rank], lhs[:,2 * self.rank:3 * self.rank], lhs[:,3 * self.rank:4 * self.rank]
+        re_tail, i_tail, j_tail, k_tail = rhs[:, :self.rank], rhs[:, self.rank:2 * self.rank], rhs[:,2 * self.rank:3 * self.rank], rhs[:,3 * self.rank:4 * self.rank]
+
+        re_relation_a, i_relation_a, j_relation_a, k_relation_a = rel[:, :self.rank], rel[:,self.rank:2 * self.rank], rel[:,2 * self.rank:3 * self.rank], rel[:,3 * self.rank:4 * self.rank]
+        re_relation_b, i_relation_b, j_relation_b, k_relation_b = rel[:, 4 * self.rank:5 * self.rank], rel[:,5 * self.rank:6 * self.rank], rel[:,6 * self.rank:7 * self.rank], rel[:,7 * self.rank:8 * self.rank]
+        re_relation_c, i_relation_c, j_relation_c, k_relation_c = rel[:, 8 * self.rank:9 * self.rank], rel[:,9 * self.rank:10 * self.rank], rel[:,10 * self.rank:11 * self.rank], rel[:,11 * self.rank:12 * self.rank]
+        re_relation_d, i_relation_d, j_relation_d, k_relation_d = rel[:, 12 * self.rank:13 * self.rank], rel[:,13 * self.rank:14 * self.rank], rel[:,14 * self.rank:15 * self.rank], rel[:,15 * self.rank:16 * self.rank]
+
+        # ah
+        re_score_a = re_head * re_relation_a + i_head * i_relation_a + j_head * j_relation_a - k_head * k_relation_a
+        i_score_a = re_head * i_relation_a + i_head * re_relation_a - j_head * k_relation_a + k_head * j_relation_a
+        j_score_a = re_head * j_relation_a + i_head * k_relation_a + j_head * re_relation_a - k_head * i_relation_a
+        k_score_a = re_head * k_relation_a + i_head * j_relation_a - j_head * i_relation_a + k_head * re_relation_a
+
+        # ah + b
+        re_score_top = re_score_a + re_relation_b
+        i_score_top = i_score_a + i_relation_b
+        j_score_top = j_score_a + j_relation_b
+        k_score_top = k_score_a + k_relation_b
+
+        # ch
+        re_score_c = re_head * re_relation_c + i_head * i_relation_c + j_head * j_relation_c - k_head * k_relation_c
+        i_score_c = re_head * i_relation_c + i_head * re_relation_c - j_head * k_relation_c + k_head * j_relation_c
+        j_score_c = re_head * j_relation_c + i_head * k_relation_c + j_head * re_relation_c - k_head * i_relation_c
+        k_score_c = re_head * k_relation_c + i_head * j_relation_c - j_head * i_relation_c + k_head * re_relation_c
+
+        # ch + d
+        re_score_dn = re_score_c + re_relation_d
+        i_score_dn = i_score_c + i_relation_d
+        j_score_dn = j_score_c + j_relation_d
+        k_score_dn = k_score_c + k_relation_d
+
+        # (ah + b)(ch-d)
+        # TAKE THE NORM OF DOWNSIDE (which will be conjugated later)
+        dn_re = torch.sqrt(
+            re_score_dn * re_score_dn + i_score_dn * i_score_dn + j_score_dn * j_score_dn + k_score_dn * k_score_dn)
+
+        # up_im = re_score_top * im_score_dn - im_score_top * re_score_dn
+        # here up_re and up_im means the resulting of the multiplication of conjugate(down) * up.
+        # For the sake of dividing by complex number, we take the conjugate of down and multiply it with both down and up
+        # at the end we end up with norm of down and on the upper part we end up with below operations
+        up_re = torch.div(re_score_top * re_score_dn
+                          - i_score_top * i_score_dn
+                          - j_score_top * j_score_dn
+                          + k_score_top * k_score_dn, dn_re)
+
+        up_i = torch.div(- re_score_top * i_score_dn
+                         + i_score_top * re_score_dn
+                         + j_score_top * k_score_dn
+                         - k_score_top * j_score_dn, dn_re)
+
+        up_j = torch.div(- re_score_top * j_score_dn
+                         - i_score_top * k_score_dn
+                         + j_score_top * re_score_dn
+                         + k_score_top * i_score_dn, dn_re)
+
+        up_k = torch.div(- re_score_top * k_score_dn
+                         - i_score_top * j_score_dn
+                         + j_score_top * i_score_dn
+                         + k_score_top * re_score_dn, dn_re)
+
+        to_score = self.embeddings[0].weight
+        to_score = to_score[:, :self.rank], to_score[:, self.rank:2 * self.rank], to_score[:,2 * self.rank:3 * self.rank], to_score[:,3 * self.rank:4 * self.rank]
+
+        return (
+                       (up_re) @ to_score[0].transpose(0, 1) +
+                       (up_i) @ to_score[1].transpose(0, 1) +
+                       (up_j) @ to_score[2].transpose(0, 1) +
+                       (up_k) @ to_score[3].transpose(0, 1)
+               ), (
+                   torch.sqrt(re_head ** 2 + i_head ** 2 + j_head ** 2 + k_head ** 2),
+                   torch.sqrt(re_relation_a ** 2 + i_relation_a ** 2 + j_relation_a ** 2 + k_relation_a ** 2 +
+                              re_relation_b ** 2 + i_relation_b ** 2 + j_relation_b ** 2 + k_relation_b ** 2 +
+                              re_relation_c ** 2 + i_relation_c ** 2 + j_relation_c ** 2 + k_relation_c ** 2 +
+                              re_relation_d ** 2 + i_relation_d ** 2 + j_relation_d ** 2 + k_relation_d ** 2),
+                   torch.sqrt(re_tail ** 2 + i_tail ** 2 + j_tail ** 2 + k_tail ** 2)
+               )
+
+    def get_rhs(self, chunk_begin: int, chunk_size: int):
+        #embeddings = self.embeddings[0](:)[:, :2*self.rank]
+        #print(self.embeddings[0].weight.data.size())
+        return self.embeddings[0].weight.data[
+            chunk_begin:chunk_begin + chunk_size,:4*self.rank
+        ].transpose(0, 1)
+
+    def get_queries(self, queries: torch.Tensor):
+        lhs = self.embeddings[0](queries[:, 0])
+        rel = self.embeddings[1](queries[:, 1])
+        rhs = self.embeddings[0](queries[:, 2])
+
+        re_head, i_head, j_head, k_head = lhs[:, :self.rank], lhs[:, self.rank:2 * self.rank], lhs[:,2 * self.rank:3 * self.rank], lhs[:,3 * self.rank:4 * self.rank]
+        re_tail, i_tail, j_tail, k_tail = rhs[:, :self.rank], rhs[:, self.rank:2 * self.rank], rhs[:,2 * self.rank:3 * self.rank], rhs[:,3 * self.rank:4 * self.rank]
+
+        re_relation_a, i_relation_a, j_relation_a, k_relation_a = rel[:, :self.rank], rel[:,self.rank:2 * self.rank], rel[:,2 * self.rank:3 * self.rank], rel[:,3 * self.rank:4 * self.rank]
+        re_relation_b, i_relation_b, j_relation_b, k_relation_b = rel[:, 4 * self.rank:5 * self.rank], rel[:,5 * self.rank:6 * self.rank], rel[:,6 * self.rank:7 * self.rank], rel[:,7 * self.rank:8 * self.rank]
+        re_relation_c, i_relation_c, j_relation_c, k_relation_c = rel[:, 8 * self.rank:9 * self.rank], rel[:,9 * self.rank:10 * self.rank], rel[:,10 * self.rank:11 * self.rank], rel[:,11 * self.rank:12 * self.rank]
+        re_relation_d, i_relation_d, j_relation_d, k_relation_d = rel[:, 12 * self.rank:13 * self.rank], rel[:,13 * self.rank:14 * self.rank], rel[:,14 * self.rank:15 * self.rank], rel[:,15 * self.rank:16 * self.rank]
+
+        # ah
+        re_score_a = re_head * re_relation_a + i_head * i_relation_a + j_head * j_relation_a - k_head * k_relation_a
+        i_score_a = re_head * i_relation_a + i_head * re_relation_a - j_head * k_relation_a + k_head * j_relation_a
+        j_score_a = re_head * j_relation_a + i_head * k_relation_a + j_head * re_relation_a - k_head * i_relation_a
+        k_score_a = re_head * k_relation_a + i_head * j_relation_a - j_head * i_relation_a + k_head * re_relation_a
+
+        # ah + b
+        re_score_top = re_score_a + re_relation_b
+        i_score_top = i_score_a + i_relation_b
+        j_score_top = j_score_a + j_relation_b
+        k_score_top = k_score_a + k_relation_b
+
+        # ch
+        re_score_c = re_head * re_relation_c + i_head * i_relation_c + j_head * j_relation_c - k_head * k_relation_c
+        i_score_c = re_head * i_relation_c + i_head * re_relation_c - j_head * k_relation_c + k_head * j_relation_c
+        j_score_c = re_head * j_relation_c + i_head * k_relation_c + j_head * re_relation_c - k_head * i_relation_c
+        k_score_c = re_head * k_relation_c + i_head * j_relation_c - j_head * i_relation_c + k_head * re_relation_c
+
+        # ch + d
+        re_score_dn = re_score_c + re_relation_d
+        i_score_dn = i_score_c + i_relation_d
+        j_score_dn = j_score_c + j_relation_d
+        k_score_dn = k_score_c + k_relation_d
+
+        # (ah + b)(ch-d)
+        # TAKE THE NORM OF DOWNSIDE (which will be conjugated later)
+        dn_re = torch.sqrt(
+            re_score_dn * re_score_dn + i_score_dn * i_score_dn + j_score_dn * j_score_dn + k_score_dn * k_score_dn)
+
+        # up_im = re_score_top * im_score_dn - im_score_top * re_score_dn
+        # here up_re and up_im means the resulting of the multiplication of conjugate(down) * up.
+        # For the sake of dividing by complex number, we take the conjugate of down and multiply it with both down and up
+        # at the end we end up with norm of down and on the upper part we end up with below operations
+        up_re = torch.div(re_score_top * re_score_dn
+                          - i_score_top * i_score_dn
+                          - j_score_top * j_score_dn
+                          + k_score_top * k_score_dn, dn_re)
+
+        up_i = torch.div(- re_score_top * i_score_dn
+                         + i_score_top * re_score_dn
+                         + j_score_top * k_score_dn
+                         - k_score_top * j_score_dn, dn_re)
+
+        up_j = torch.div(- re_score_top * j_score_dn
+                         - i_score_top * k_score_dn
+                         + j_score_top * re_score_dn
+                         + k_score_top * i_score_dn, dn_re)
+
+        up_k = torch.div(- re_score_top * k_score_dn
+                         - i_score_top * j_score_dn
+                         + j_score_top * i_score_dn
+                         + k_score_top * re_score_dn, dn_re)
 
         return torch.cat([
             up_re,
