@@ -66,5 +66,5 @@ for k in range(k_fold):
 
     # below lines of codes ensures that train - test sets do not have any common elements in them
     print(new_train.columns.tolist())
-    result = pd.merge(new_train, new_test, on=new_test.columns.tolist()[1:])
+    result = pd.merge(new_train, new_test, on=new_test.columns.tolist()[:])
     print(result.shape)
