@@ -41,8 +41,8 @@ for k in range(k_fold):
     print(k)
     # create a folder space for output datasets
     try:
-        os.mkdir(os.path.join(input_path_dset_folder, dataset + str(k)))
         output_folder = os.path.join(input_path_dset_folder, dataset + str(k))
+        os.mkdir(os.path.join(input_path_dset_folder, dataset + str(k)))
     except:
         print("it exists! so moving on...")
     # split train+test data
